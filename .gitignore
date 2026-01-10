@@ -1,0 +1,41 @@
+# Rust
+/target/
+Cargo.lock
+
+# Node.js
+node_modules/
+dist/
+.npm
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/
+src-tauri/icons/
+
+# Build outputs
+*.msi
+*.exe
+*.dmg
+*.app
+*.deb
+*.AppImage
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
