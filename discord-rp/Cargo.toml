@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = ["crates/rp-core", "crates/rp-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+# Discord連携
+discord-rich-presence = "0.2"
+
+# ディレクトリパス
+dirs = "6"
+
+# シリアライズ/デシリアライズ
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+# エラーハンドリング
+thiserror = "2"
+anyhow = "1"
+
+# ロギング
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# 環境変数
+dotenvy = "0.15"
+
+# シグナルハンドリング
+ctrlc = "3"
+
+# ワークスペース内クレート
+rp-core = { path = "crates/rp-core" }

@@ -1,0 +1,19 @@
+[package]
+name = "rp-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Discord Rich Presence CLI ツール"
+
+[[bin]]
+name = "discord-rp"
+path = "src/main.rs"
+
+[dependencies]
+rp-core.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+dotenvy.workspace = true
+ctrlc.workspace = true
