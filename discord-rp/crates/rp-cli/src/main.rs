@@ -12,9 +12,9 @@ use tracing_subscriber::EnvFilter;
 #[command(about = "Discord Rich Presence をカスタマイズするCLIツール")]
 #[command(version)]
 struct Cli {
-    /// Application ID（環境変数 DISCORD_APPLICATION_ID でも指定可能）
-    #[arg(short, long, env = "DISCORD_APPLICATION_ID")]
-    app_id: Option<String>,
+    /// 使用するApplication IDのインデックス（1始まり、デフォルト: 1）
+    #[arg(short, long, default_value = "1")]
+    index: u32,
 
     /// 設定ファイルのパス
     #[arg(short, long)]
@@ -71,6 +71,9 @@ enum Commands {
     /// 接続テスト
     Test,
 
+    /// 登録済みApplication ID一覧を表示
+    List,
+
     /// 設定ファイルを生成
     Init {
         /// 出力先パス（指定しない場合はデフォルトパス）
@@ -86,11 +89,12 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // ロギングの初期化
-    let filter = EnvFilter::try_new(&cli.log_level)
-        .unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .init();
+    let filter =
+        EnvFilter::try_new(&cli.log_level).unwrap_or_else(|_| EnvFilter::new("info"));
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    // 環境変数から設定を読み込む
+    let config = Config::from_env();
 
     match cli.command {
         Commands::Set {
@@ -103,9 +107,10 @@ fn main() -> Result<()> {
             ref small_text,
             duration,
         } => {
-            let app_id = get_app_id(&cli)?;
+            let app_id = get_app_id(&config, cli.index)?;
             cmd_set(
                 &app_id,
+                cli.index,
                 details.clone(),
                 state.clone(),
                 elapsed,
@@ -117,50 +122,30 @@ fn main() -> Result<()> {
             )
         }
         Commands::Clear => {
-            let app_id = get_app_id(&cli)?;
+            let app_id = get_app_id(&config, cli.index)?;
             cmd_clear(&app_id)
         }
         Commands::Test => {
-            let app_id = get_app_id(&cli)?;
-            cmd_test(&app_id)
+            let app_id = get_app_id(&config, cli.index)?;
+            cmd_test(&app_id, cli.index)
         }
-        Commands::Init { output } => cmd_init(output, cli.app_id),
+        Commands::List => cmd_list(&config),
+        Commands::Init { output } => cmd_init(output),
     }
 }
 
 /// Application IDを取得
-fn get_app_id(cli: &Cli) -> Result<String> {
-    // 1. コマンドライン引数
-    if let Some(ref id) = cli.app_id {
-        return Ok(id.clone());
-    }
-
-    // 2. 設定ファイル
-    if let Some(ref path) = cli.config {
-        let config = Config::load(path)?;
-        return Ok(config.application_id);
-    }
-
-    // 3. デフォルト設定ファイル
-    if let Some(path) = Config::default_path() {
-        if path.exists() {
-            let config = Config::load(&path)?;
-            return Ok(config.application_id);
-        }
-    }
-
-    anyhow::bail!(
-        "Application ID が指定されていません。\n\
-        以下のいずれかで指定してください:\n\
-        - コマンドライン: --app-id <ID>\n\
-        - 環境変数: DISCORD_APPLICATION_ID\n\
-        - 設定ファイル: --config <パス> または 'discord-rp init' で生成"
-    )
+fn get_app_id(config: &Config, index: u32) -> Result<String> {
+    config
+        .get_application_id(index)
+        .map(|s| s.to_string())
+        .map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 /// setコマンドの実行
 fn cmd_set(
     app_id: &str,
+    index: u32,
     details: Option<String>,
     state: Option<String>,
     elapsed: bool,
@@ -198,7 +183,10 @@ fn cmd_set(
         .context("アクティビティの更新に失敗しました")?;
 
     info!("Rich Presence を設定しました");
-    println!("Rich Presence を設定しました。Ctrl+C で終了します。");
+    println!(
+        "Rich Presence を設定しました（インデックス: {}）。Ctrl+C で終了します。",
+        index
+    );
 
     // 指定時間または Ctrl+C まで待機
     if let Some(secs) = duration {
@@ -234,8 +222,9 @@ fn cmd_clear(app_id: &str) -> Result<()> {
 }
 
 /// testコマンドの実行
-fn cmd_test(app_id: &str) -> Result<()> {
+fn cmd_test(app_id: &str, index: u32) -> Result<()> {
     println!("Discord への接続をテストしています...");
+    println!("インデックス: {}", index);
     println!("Application ID: {}", app_id);
 
     let mut client =
@@ -255,18 +244,53 @@ fn cmd_test(app_id: &str) -> Result<()> {
     }
 }
 
+/// listコマンドの実行
+fn cmd_list(config: &Config) -> Result<()> {
+    let indices = config.registered_indices();
+
+    if indices.is_empty() {
+        println!("登録されているApplication IDがありません。");
+        println!();
+        println!("環境変数で設定してください:");
+        println!("  DISCORD_APPLICATION_ID_1=<Application ID>");
+        println!("  DISCORD_APPLICATION_ID_2=<Application ID>");
+        println!("  ...");
+        return Ok(());
+    }
+
+    println!("登録済みApplication ID:");
+    println!();
+    for idx in indices {
+        if let Ok(app_id) = config.get_application_id(idx) {
+            // Application IDの一部を隠す
+            let masked = if app_id.len() > 8 {
+                format!("{}...{}", &app_id[..4], &app_id[app_id.len() - 4..])
+            } else {
+                app_id.to_string()
+            };
+            println!("  [{}] {}", idx, masked);
+        }
+    }
+    println!();
+    println!("使用例: discord-rp -i 1 set -d \"作業中\"");
+
+    Ok(())
+}
+
 /// initコマンドの実行
-fn cmd_init(output: Option<PathBuf>, app_id: Option<String>) -> Result<()> {
+fn cmd_init(output: Option<PathBuf>) -> Result<()> {
     let path = output
         .or_else(Config::default_path)
         .context("設定ファイルのパスを決定できませんでした")?;
 
-    let app_id = app_id.unwrap_or_else(|| "YOUR_APPLICATION_ID".to_string());
-    let config = Config::new(app_id);
-
+    let config = Config::new();
     config.save(&path)?;
 
     println!("設定ファイルを作成しました: {}", path.display());
-    println!("Application ID を編集してください。");
+    println!();
+    println!("Application IDは環境変数で設定してください:");
+    println!("  DISCORD_APPLICATION_ID_1=<Application ID>");
+    println!("  DISCORD_APPLICATION_ID_2=<Application ID>");
+    println!("  ...");
     Ok(())
 }

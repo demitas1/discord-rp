@@ -5,8 +5,8 @@ Discord Rich Presenceを自由にカスタマイズできるデスクトップ�
 ## 機能
 
 - 任意のテキストやアイコンをDiscordステータスとして表示
+- 複数Application IDによるカテゴリ切り替え
 - 経過時間の表示
-- 設定ファイル（TOML）による管理
 - CLIによる操作
 - Windows / macOS / Linux 対応
 
@@ -21,16 +21,22 @@ Discord Rich Presenceを自由にカスタマイズできるデスクトップ�
 
 1. [Discord Developer Portal](https://discord.com/developers/applications) にアクセス
 2. 「New Application」をクリックしてアプリケーションを作成
+   - アプリケーション名がDiscordで「〇〇をプレイ中」として表示されます
+   - 例: "Working", "Studying", "Playing" など用途別に複数作成可能
 3. 「General Information」から **Application ID** をコピー
 
 ### 2. 環境変数を設定
 
 ```bash
-# .envファイルを作成
-echo "DISCORD_APPLICATION_ID=あなたのApplication ID" > .env
+# .envファイルを作成（複数ID対応）
+cat << 'EOF' > .env
+DISCORD_APPLICATION_ID_1=111111111111111111
+DISCORD_APPLICATION_ID_2=222222222222222222
+DISCORD_APPLICATION_ID_3=333333333333333333
+EOF
 ```
 
-または、コマンド実行時に `--app-id` オプションで指定することもできます。
+インデックス番号（1, 2, 3...）でアプリケーションを切り替えます。
 
 ### 3. ビルド
 
@@ -44,21 +50,45 @@ cargo build --release
 ### 基本コマンド
 
 ```bash
-# ヘルプを表示
+# 開発時（cargo経由）
 cargo run -p rp-cli -- --help
-
-# 接続テスト
+cargo run -p rp-cli -- list
 cargo run -p rp-cli -- test
+cargo run -p rp-cli -- set -d "テキスト" -s "状態"
+
+# ビルド後（バイナリ直接実行）
+./target/release/discord-rp --help
+./target/release/discord-rp list
+./target/release/discord-rp test
+./target/release/discord-rp set -d "テキスト" -s "状態"
+```
+
+以降の例では簡潔のため `discord-rp` と表記しますが、開発時は `cargo run -p rp-cli --` に置き換えてください。
+
+```bash
+# 登録済みApplication ID一覧を表示
+discord-rp list
+
+# 接続テスト（デフォルト: インデックス1）
+discord-rp test
+
+# 接続テスト（インデックス指定）
+discord-rp -i 2 test
 
 # Rich Presenceを設定
-cargo run -p rp-cli -- set --details "テキスト" --state "状態"
+discord-rp set -d "テキスト" -s "状態"
 
-# Rich Presenceをクリア
-cargo run -p rp-cli -- clear
-
-# 設定ファイルを生成
-cargo run -p rp-cli -- init
+# 別のApplication IDで設定（インデックス2）
+discord-rp -i 2 set -d "勉強中" -s "数学"
 ```
+
+### グローバルオプション
+
+| オプション | 説明 |
+|-----------|------|
+| `-i, --index <N>` | 使用するApplication IDのインデックス（1始まり、デフォルト: 1） |
+| `-c, --config <PATH>` | 設定ファイルのパス |
+| `--log-level <LEVEL>` | ログレベル（trace/debug/info/warn/error） |
 
 ### setコマンドのオプション
 
@@ -76,43 +106,33 @@ cargo run -p rp-cli -- init
 ### 使用例
 
 ```bash
-# シンプルなステータス表示
-cargo run -p rp-cli -- set -d "コーディング中" -s "Rustプロジェクト"
+# カテゴリ1（例: "Working"）で作業状態を表示
+discord-rp -i 1 set -d "Rustプロジェクト" -s "Phase 1" --elapsed
 
-# 経過時間付きで表示
-cargo run -p rp-cli -- set -d "ゲームをプレイ中" --elapsed
+# カテゴリ2（例: "Studying"）で勉強状態を表示
+discord-rp -i 2 set -d "数学" -s "線形代数"
+
+# カテゴリ3（例: "Playing"）でゲーム状態を表示
+discord-rp -i 3 set -d "Minecraft" --elapsed
 
 # 30秒間だけ表示
-cargo run -p rp-cli -- set -d "休憩中" -D 30
+discord-rp set -d "休憩中" -D 30
 
 # 画像付きで表示（Developer Portalで画像を登録済みの場合）
-cargo run -p rp-cli -- set -d "作業中" --large-image "my-icon" --large-text "カスタムアイコン"
+discord-rp set -d "作業中" --large-image "my-icon" --large-text "カスタムアイコン"
 ```
 
-### グローバルオプション
+## 複数Application IDの活用
 
-| オプション | 説明 |
-|-----------|------|
-| `-a, --app-id <ID>` | Application ID（環境変数でも指定可） |
-| `-c, --config <PATH>` | 設定ファイルのパス |
-| `--log-level <LEVEL>` | ログレベル（trace/debug/info/warn/error） |
+Discord Developer Portalで用途別にアプリケーションを作成することで、ステータスのカテゴリを切り替えられます。
 
-## 設定ファイル
+| インデックス | アプリケーション名（例） | 用途 |
+|-------------|------------------------|------|
+| 1 | Working | 仕事・作業 |
+| 2 | Studying | 勉強 |
+| 3 | Playing | ゲーム |
 
-`discord-rp init` で設定ファイルを生成できます。
-
-```toml
-# ~/.config/discord-rp/config.toml
-
-application_id = "あなたのApplication ID"
-auto_connect = true
-auto_reconnect = true
-reconnect_interval = 30
-
-[activity]
-details = "デフォルトのテキスト"
-state = "デフォルトの状態"
-```
+アプリケーション名は Discord Developer Portal の「General Information」→「NAME」で変更できます。
 
 ## プロジェクト構成
 

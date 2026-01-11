@@ -2,13 +2,15 @@
 
 use crate::{Activity, Error, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// アプリケーション設定
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Discord Application ID
-    pub application_id: String,
+    /// Discord Application IDs（キー: インデックス番号）
+    #[serde(default)]
+    pub application_ids: BTreeMap<u32, String>,
 
     /// デフォルトのアクティビティ設定
     #[serde(default)]
@@ -38,7 +40,7 @@ fn default_reconnect_interval() -> u64 {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            application_id: String::new(),
+            application_ids: BTreeMap::new(),
             activity: Activity::default(),
             auto_connect: true,
             auto_reconnect: true,
@@ -49,11 +51,43 @@ impl Default for Config {
 
 impl Config {
     /// 新しい設定を作成
-    pub fn new(application_id: impl Into<String>) -> Self {
-        Self {
-            application_id: application_id.into(),
-            ..Default::default()
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Application IDを追加
+    pub fn add_application_id(&mut self, index: u32, app_id: impl Into<String>) {
+        self.application_ids.insert(index, app_id.into());
+    }
+
+    /// 指定インデックスのApplication IDを取得（1始まり）
+    pub fn get_application_id(&self, index: u32) -> Result<&str> {
+        if index == 0 {
+            return Err(Error::InvalidApplicationId(
+                "インデックスは1から始まります".to_string(),
+            ));
         }
+
+        self.application_ids
+            .get(&index)
+            .map(|s| s.as_str())
+            .ok_or_else(|| {
+                Error::InvalidApplicationId(format!(
+                    "インデックス {} のApplication IDが登録されていません（登録済み: {:?}）",
+                    index,
+                    self.application_ids.keys().collect::<Vec<_>>()
+                ))
+            })
+    }
+
+    /// 登録済みのApplication ID数を取得
+    pub fn application_id_count(&self) -> usize {
+        self.application_ids.len()
+    }
+
+    /// 登録済みのインデックス一覧を取得
+    pub fn registered_indices(&self) -> Vec<u32> {
+        self.application_ids.keys().copied().collect()
     }
 
     /// ファイルから設定を読み込む
@@ -88,5 +122,25 @@ impl Config {
     /// デフォルトの設定ファイルパスを取得
     pub fn default_path() -> Option<std::path::PathBuf> {
         dirs::config_dir().map(|p| p.join("discord-rp").join("config.toml"))
+    }
+
+    /// 環境変数からApplication IDを読み込む
+    /// DISCORD_APPLICATION_ID_1, DISCORD_APPLICATION_ID_2, ... の形式
+    pub fn load_from_env(&mut self) {
+        for i in 1..=100 {
+            let key = format!("DISCORD_APPLICATION_ID_{}", i);
+            if let Ok(value) = std::env::var(&key) {
+                if !value.is_empty() {
+                    self.add_application_id(i, value);
+                }
+            }
+        }
+    }
+
+    /// 環境変数から設定を作成
+    pub fn from_env() -> Self {
+        let mut config = Self::new();
+        config.load_from_env();
+        config
     }
 }
